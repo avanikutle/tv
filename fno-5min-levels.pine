@@ -1,0 +1,42 @@
+//@version=6
+indicator("Support & Resistance - True Horizontal Lines", overlay=true)
+
+// --- Daily Levels (Previous Day) ---
+pdh = request.security(syminfo.tickerid, "D", high[1], lookahead=barmerge.lookahead_on)
+pdl = request.security(syminfo.tickerid, "D", low[1], lookahead=barmerge.lookahead_on)
+pdc = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_on)
+
+// --- 5-Minute First Bar Levels ---
+var float curr5h = na
+var float curr5l = na
+var float prev5h = na
+var float prev5l = na
+
+// v6 Strict Boolean Fix
+bool isNewDay = time("D") != time("D")[1]
+
+if isNewDay
+    prev5h := curr5h
+    prev5l := curr5l
+    curr5h := high
+    curr5l := low
+else if time - ta.valuewhen(isNewDay, time, 0) < 5 * 60 * 1000 
+    curr5h := math.max(nz(curr5h, high), high)
+    curr5l := math.min(nz(curr5l, low), low)
+
+// --- Color Definitions ---
+colorPrev = color.new(color.silver, 0) // Light Grey
+colorToday = color.new(color.white, 0) // White
+
+// --- Draw True Horizontal Lines ---
+if barstate.islastconfirmedhistory or barstate.isrealtime
+    // Previous Day Levels (Light Grey, Dotted)
+    line.new(bar_index - 1, pdh, bar_index, pdh, color=colorPrev, style=line.style_dotted, extend=extend.both)
+    line.new(bar_index - 1, pdl, bar_index, pdl, color=colorPrev, style=line.style_dotted, extend=extend.both)
+    line.new(bar_index - 1, pdc, bar_index, pdc, color=colorPrev, style=line.style_dotted, extend=extend.both)
+    line.new(bar_index - 1, prev5h, bar_index, prev5h, color=colorPrev, style=line.style_dotted, extend=extend.both)
+    line.new(bar_index - 1, prev5l, bar_index, prev5l, color=colorPrev, style=line.style_dotted, extend=extend.both)
+
+    // Today's Levels (White, Dotted)
+    line.new(bar_index - 1, curr5h, bar_index, curr5h, color=colorToday, style=line.style_dotted, extend=extend.both)
+    line.new(bar_index - 1, curr5l, bar_index, curr5l, color=colorToday, style=line.style_dotted, extend=extend.both)

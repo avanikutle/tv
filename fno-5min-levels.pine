@@ -1,9 +1,16 @@
 //@version=6
-indicator("Support & Resistance - Decluttered + Round Numbers", overlay=true)
+indicator("Support & Resistance - Toggles + Decluttered", overlay=true)
 
-// --- Inputs ---
-roundStep = input.int(500, title="Round Number Step (0 to disable)", tooltip="Set to 500 for Nifty, 100 for others. 0 turns it off.")
-colorRound = input.color(color.new(color.fuchsia, 30), title="Round Number Color")
+// --- Settings & Toggles ---
+grpToggles = "Level Toggles"
+showPrevDaily = input.bool(true, title="Show Previous Day (High/Low/Close)", group=grpToggles)
+showPrev5Min  = input.bool(true, title="Show Previous 5-Min (High/Low)", group=grpToggles)
+showToday5Min = input.bool(true, title="Show Today's 5-Min (High/Low)", group=grpToggles)
+showRoundNums = input.bool(true, title="Show Round Numbers", group=grpToggles)
+
+grpRound = "Round Number Settings"
+roundStep = input.int(500, title="Round Number Step", tooltip="Set to 500 for Nifty, 100 for others.", group=grpRound)
+colorRound = input.color(color.new(color.fuchsia, 30), title="Round Number Color", group=grpRound)
 
 // --- Detect New Trading Day & Session Break ---
 bool isNewDay = time("D") != time("D")[1]
@@ -50,17 +57,22 @@ if barstate.islast
     colorPrev = color.new(color.silver, 0)
     colorToday = color.new(color.white, 0)
 
-    // Load High/Low/Close Levels
-    mapNames.add_level(mapColors, pdh, "prev day high", colorPrev)
-    mapNames.add_level(mapColors, pdl, "prev-day-low", colorPrev)
-    mapNames.add_level(mapColors, pdc, "prev-close", colorPrev)
-    mapNames.add_level(mapColors, prev5h, "prev 5 min high", colorPrev)
-    mapNames.add_level(mapColors, prev5l, "prev-5min-low", colorPrev)
-    mapNames.add_level(mapColors, curr5h, "today 5 min high", colorToday)
-    mapNames.add_level(mapColors, curr5l, "today 5 min low", colorToday)
+    // Conditionally Load Levels based on User Toggles
+    if showPrevDaily
+        mapNames.add_level(mapColors, pdh, "prev day high", colorPrev)
+        mapNames.add_level(mapColors, pdl, "prev-day-low", colorPrev)
+        mapNames.add_level(mapColors, pdc, "prev-close", colorPrev)
+        
+    if showPrev5Min
+        mapNames.add_level(mapColors, prev5h, "prev 5 min high", colorPrev)
+        mapNames.add_level(mapColors, prev5l, "prev-5min-low", colorPrev)
+        
+    if showToday5Min
+        mapNames.add_level(mapColors, curr5h, "today 5 min high", colorToday)
+        mapNames.add_level(mapColors, curr5l, "today 5 min low", colorToday)
 
-    // Calculate & Load Nearest Round Numbers (2 above, 2 below current price)
-    if roundStep > 0
+    // Conditionally Load Nearest Round Numbers (2 above, 2 below current price)
+    if showRoundNums and roundStep > 0
         baseRound = math.floor(close / roundStep) * roundStep
         for i = -1 to 2
             rnPrice = baseRound + (i * roundStep)

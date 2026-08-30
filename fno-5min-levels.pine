@@ -1,10 +1,8 @@
 //@version=6
-indicator("Support & Resistance - True Horizontal Lines", overlay=true)
+indicator("Support & Resistance - End-to-End with Labels", overlay=true)
 
-// --- Daily Levels (Previous Day) ---
-pdh = request.security(syminfo.tickerid, "D", high[1], lookahead=barmerge.lookahead_on)
-pdl = request.security(syminfo.tickerid, "D", low[1], lookahead=barmerge.lookahead_on)
-pdc = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_on)
+// --- Detect New Trading Day ---
+bool isNewDay = time("D") != time("D")[1]
 
 // --- 5-Minute First Bar Levels ---
 var float curr5h = na
@@ -12,31 +10,56 @@ var float curr5l = na
 var float prev5h = na
 var float prev5l = na
 
-// v6 Strict Boolean Fix
-bool isNewDay = time("D") != time("D")[1]
-
 if isNewDay
+    // Roll over today's 5-minute levels to previous day
     prev5h := curr5h
     prev5l := curr5l
+    // Initialize today's 5-minute high/low
     curr5h := high
     curr5l := low
-else if time - ta.valuewhen(isNewDay, time, 0) < 5 * 60 * 1000 
+else if time - ta.valuewhen(isNewDay, time, 0) < 5 * 60 * 1000
+    // Lock in the highest/lowest points of the first 5 minutes
     curr5h := math.max(nz(curr5h, high), high)
     curr5l := math.min(nz(curr5l, low), low)
 
+// --- Daily High, Low, Close ---
+pdh = request.security(syminfo.tickerid, "D", high[1], lookahead=barmerge.lookahead_on)
+pdl = request.security(syminfo.tickerid, "D", low[1], lookahead=barmerge.lookahead_on)
+pdc = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_on)
+
 // --- Color Definitions ---
-colorPrev = color.new(color.silver, 0) // Light Grey
-colorToday = color.new(color.white, 0) // White
+colorPrev = color.new(color.silver, 0)       // Light Grey for Previous Day
+colorToday = color.new(color.white, 0)       // White for Today
+colorSessionBreak = color.new(color.gray, 60)// Semi-transparent for vertical split
 
-// --- Draw True Horizontal Lines ---
-if barstate.islastconfirmedhistory or barstate.isrealtime
-    // Previous Day Levels (Light Grey, Dotted)
-    line.new(bar_index - 1, pdh, bar_index, pdh, color=colorPrev, style=line.style_dotted, extend=extend.both)
-    line.new(bar_index - 1, pdl, bar_index, pdl, color=colorPrev, style=line.style_dotted, extend=extend.both)
-    line.new(bar_index - 1, pdc, bar_index, pdc, color=colorPrev, style=line.style_dotted, extend=extend.both)
+// --- Draw Vertical Session Breaks ---
+if isNewDay
+    line.new(x1=bar_index, y1=low, x2=bar_index, y2=high, color=colorSessionBreak, style=line.style_dashed, extend=extend.both)
+
+// --- Draw End-to-End Horizontal Lines & Labels ---
+// We use 'barstate.islast' to draw these lines and labels only once on the current bar.
+// 'extend=extend.both' stretches them across the entire canvas indefinitely.
+if barstate.islast
+    // --- Previous Day 5-Min Levels ---
     line.new(bar_index - 1, prev5h, bar_index, prev5h, color=colorPrev, style=line.style_dotted, extend=extend.both)
-    line.new(bar_index - 1, prev5l, bar_index, prev5l, color=colorPrev, style=line.style_dotted, extend=extend.both)
+    label.new(bar_index - 30, prev5h, text="prev 5 min high", style=label.style_none, textcolor=colorPrev, size=size.small)
 
-    // Today's Levels (White, Dotted)
+    line.new(bar_index - 1, prev5l, bar_index, prev5l, color=colorPrev, style=line.style_dotted, extend=extend.both)
+    label.new(bar_index - 30, prev5l, text="prev-5min-low", style=label.style_none, textcolor=colorPrev, size=size.small)
+
+    // --- Today's 5-Min Levels ---
     line.new(bar_index - 1, curr5h, bar_index, curr5h, color=colorToday, style=line.style_dotted, extend=extend.both)
+    label.new(bar_index - 15, curr5h, text="today 5 min high", style=label.style_none, textcolor=colorToday, size=size.small)
+
     line.new(bar_index - 1, curr5l, bar_index, curr5l, color=colorToday, style=line.style_dotted, extend=extend.both)
+    label.new(bar_index - 15, curr5l, text="today 5 min low", style=label.style_none, textcolor=colorToday, size=size.small)
+
+    // --- Previous Day Main Levels (Included as depicted in screenshot) ---
+    line.new(bar_index - 1, pdh, bar_index, pdh, color=colorPrev, style=line.style_dotted, extend=extend.both)
+    label.new(bar_index - 30, pdh, text="prev day high", style=label.style_none, textcolor=colorPrev, size=size.small)
+    
+    line.new(bar_index - 1, pdl, bar_index, pdl, color=colorPrev, style=line.style_dotted, extend=extend.both)
+    label.new(bar_index - 30, pdl, text="prev-day-low", style=label.style_none, textcolor=colorPrev, size=size.small)
+    
+    line.new(bar_index - 1, pdc, bar_index, pdc, color=colorPrev, style=line.style_dotted, extend=extend.both)
+    label.new(bar_index - 30, pdc, text="prev-close", style=label.style_none, textcolor=colorPrev, size=size.small)

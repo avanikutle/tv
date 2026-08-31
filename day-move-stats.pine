@@ -1,0 +1,118 @@
+//@version=6
+indicator("day-move-stats", overlay = true)
+
+// ==========================================
+// Settings & Styling
+// ==========================================
+group_ui = "HUD Layout & Appearance"
+box_position = input.string("Top Right", "Screen Position", 
+     options = ["Top Right", "Top Center", "Top Left", 
+                "Middle Right", "Middle Center", "Middle Left", 
+                "Bottom Right", "Bottom Center", "Bottom Left"], 
+     group = group_ui)
+hud_size     = input.string("Small", "Font Size", options = ["Tiny", "Small", "Normal"], group = group_ui)
+
+group_colors = "Palette"
+bg_color     = input.color(color.rgb(18, 18, 24, 25), "Card Background", group = group_colors)
+border_color = input.color(color.rgb(255, 215, 0, 80), "Border Tint", group = group_colors)
+bull_color   = input.color(#00E676, "Bullish Color", group = group_colors)
+bear_color   = input.color(#FF5252, "Bearish Color", group = group_colors)
+dim_txt      = input.color(#B0BEC5, "Label Text Color", group = group_colors)
+
+// ==========================================
+// Calculations
+// ==========================================
+// Daily Open, High, Low, Previous Close
+[d_open, d_high, d_low, prev_close] = request.security(
+     syminfo.tickerid, 
+     "D", 
+     [open, high, low, close[1]], 
+     gaps = barmerge.gaps_off, 
+     lookahead = barmerge.lookahead_off
+ )
+
+// Session VWAP
+session_vwap = ta.vwap(hlc3)
+
+// Percentage Excursions from Previous Close
+curr_move_pct = prev_close != 0 ? ((close - prev_close) / prev_close) * 100.0 : 0.0
+max_up_pct    = prev_close != 0 ? ((d_high - prev_close) / prev_close) * 100.0 : 0.0
+max_down_pct  = prev_close != 0 ? ((d_low - prev_close) / prev_close) * 100.0 : 0.0
+
+// VWAP & Bias Logic
+is_above_vwap = not na(session_vwap) and close >= session_vwap
+vwap_text     = is_above_vwap ? "Above VWAP" : "Below VWAP"
+vwap_color    = is_above_vwap ? bull_color : bear_color
+
+is_bullish    = curr_move_pct >= 0 and is_above_vwap
+is_bearish    = curr_move_pct < 0 and not is_above_vwap
+bias_text     = is_bullish ? "BULLISH" : is_bearish ? "BEARISH" : "NEUTRAL"
+bias_color    = is_bullish ? bull_color : is_bearish ? bear_color : color.yellow
+
+// Custom Formatter to prevent overlapping signs
+fmt_pct(float val) =>
+    sign = val > 0 ? "+" : ""
+    sign + str.tostring(val, "#.##") + "%"
+
+// ==========================================
+// Render Clean HUD
+// ==========================================
+var table hud = na
+
+get_table_pos(string pos) =>
+    switch pos
+        "Top Left"      => position.top_left
+        "Top Center"    => position.top_center
+        "Top Right"     => position.top_right
+        "Middle Left"   => position.middle_left
+        "Middle Center" => position.middle_center
+        "Middle Right"  => position.middle_right
+        "Bottom Left"   => position.bottom_left
+        "Bottom Center" => position.bottom_center
+        "Bottom Right"  => position.bottom_right
+        => position.top_right
+
+get_size(string sz) =>
+    switch sz
+        "Tiny"   => size.tiny
+        "Small"  => size.small
+        "Normal" => size.normal
+        => size.small
+
+if barstate.islast
+    hud := table.new(
+         get_table_pos(box_position), 
+         columns = 2, 
+         rows = 6, 
+         bgcolor = bg_color, 
+         border_color = border_color, 
+         border_width = 1
+     )
+
+    t_sz = get_size(hud_size)
+
+    // Row 0: Header
+    curr_color = curr_move_pct >= 0 ? bull_color : bear_color
+
+    table.cell(hud, 0, 0, "METRIC", text_color = dim_txt, text_size = t_sz, text_halign = text.align_center)
+    table.cell(hud, 1, 0, "VALUE",  text_color = dim_txt, text_size = t_sz, text_halign = text.align_center)
+
+    // Row 1: Today Movement
+    table.cell(hud, 0, 1, "Today", text_color = dim_txt, text_size = t_sz, text_halign = text.align_left)
+    table.cell(hud, 1, 1, fmt_pct(curr_move_pct), text_color = curr_color, text_size = t_sz, text_halign = text.align_left)
+
+    // Row 2: Max Up Extent
+    table.cell(hud, 0, 2, "Max Up", text_color = dim_txt, text_size = t_sz, text_halign = text.align_left)
+    table.cell(hud, 1, 2, fmt_pct(max_up_pct), text_color = max_up_pct >= 0 ? bull_color : bear_color, text_size = t_sz, text_halign = text.align_left)
+
+    // Row 3: Max Down Extent
+    table.cell(hud, 0, 3, "Max Down", text_color = dim_txt, text_size = t_sz, text_halign = text.align_left)
+    table.cell(hud, 1, 3, fmt_pct(max_down_pct), text_color = bear_color, text_size = t_sz, text_halign = text.align_left)
+
+    // Row 4: VWAP Condition
+    table.cell(hud, 0, 4, "VWAP", text_color = dim_txt, text_size = t_sz, text_halign = text.align_left)
+    table.cell(hud, 1, 4, vwap_text, text_color = vwap_color, text_size = t_sz, text_halign = text.align_left)
+
+    // Row 5: Sentiment Bias
+    table.cell(hud, 0, 5, "Bias", text_color = dim_txt, text_size = t_sz, text_halign = text.align_left)
+    table.cell(hud, 1, 5, bias_text, text_color = bias_color, text_size = t_sz, text_halign = text.align_left)

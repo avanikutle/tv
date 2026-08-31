@@ -1,5 +1,5 @@
 //@version=6
-indicator("Support & Resistance - Toggles + Decluttered", overlay=true)
+indicator("FnO-levels", overlay=true)
 
 // --- Settings & Toggles ---
 grpToggles = "Level Toggles"

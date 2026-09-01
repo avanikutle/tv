@@ -1,5 +1,5 @@
 //@version=6
-indicator("Master Dashboard", overlay=true)
+indicator("Master-Dashboard", overlay=true)
 
 // ==========================================
 // 1. Inputs & Toggles
@@ -65,15 +65,15 @@ ret_3m = ((c_today - c_3m) / c_3m) * 100
 ret_6m = ((c_today - c_6m) / c_6m) * 100
 ret_1y = ((c_today - c_1y) / c_1y) * 100
 
-// Fundamentals
-eps_ttm       = request.financial(syminfo.tickerid, "EARNINGS_PER_SHARE", "TTM")
-pe_ratio      = c_today / eps_ttm
-shares_out    = request.financial(syminfo.tickerid, "TOTAL_SHARES_OUTSTANDING", "FQ")
-market_cap_cr = (shares_out * c_today) / 10000000 
-actual_eps    = request.earnings(syminfo.tickerid, earnings.actual)
-est_eps       = request.earnings(syminfo.tickerid, earnings.estimate)
+// Fundamentals (With Safe Fallbacks for Commodities / Non-Stock Assets)
+eps_ttm       = request.financial(syminfo.tickerid, "EARNINGS_PER_SHARE", "TTM", ignore_invalid_symbol=true)
+pe_ratio      = not na(eps_ttm) and eps_ttm != 0 ? c_today / eps_ttm : na
+shares_out    = request.financial(syminfo.tickerid, "TOTAL_SHARES_OUTSTANDING", "FQ", ignore_invalid_symbol=true)
+market_cap_cr = not na(shares_out) ? (shares_out * c_today) / 10000000 : na
+actual_eps    = request.earnings(syminfo.tickerid, earnings.actual, ignore_invalid_symbol=true)
+est_eps       = request.earnings(syminfo.tickerid, earnings.estimate, ignore_invalid_symbol=true)
 
-// Technicals (Updated to Simple Moving Averages for "DMA")
+// Technicals
 dma50      = request.security(syminfo.tickerid, "D", ta.sma(close, 50))
 dma100     = request.security(syminfo.tickerid, "D", ta.sma(close, 100))
 dma50_str  = c_today > dma50 ? "Above" : "Below"
@@ -124,7 +124,6 @@ if barstate.islast
         table.cell(dash, 1, r_left, vwap_str, text_color=vwap_col, text_size=size.small)
         r_left += 1
 
-    // Yesterday moved directly above 1 Week
     if show_yest
         table.cell(dash, 0, r_left, "Yesterday", text_color=color.white, text_size=size.small)
         table.cell(dash, 1, r_left, f_str(ret_yesterday), text_color=f_color(ret_yesterday), text_size=size.small)
@@ -154,19 +153,22 @@ if barstate.islast
     // --- RIGHT COLUMN: Fundamentals & Technicals (Conditional) ---
     if show_right
         if show_mcap
+            mcap_txt = na(market_cap_cr) ? "N/A" : str.tostring(market_cap_cr, "#.##")
             table.cell(dash, 2, r_right, "Mkt Cap (Cr)", text_color=color.white, text_size=size.small)
-            table.cell(dash, 3, r_right, str.tostring(market_cap_cr, "#.##"), text_color=color.white, text_size=size.small)
+            table.cell(dash, 3, r_right, mcap_txt, text_color=color.white, text_size=size.small)
             r_right += 1
 
         if show_pe
+            pe_txt = na(pe_ratio) ? "N/A" : str.tostring(pe_ratio, "#.##")
             table.cell(dash, 2, r_right, "P/E Ratio", text_color=color.white, text_size=size.small)
-            table.cell(dash, 3, r_right, str.tostring(pe_ratio, "#.##"), text_color=color.white, text_size=size.small)
+            table.cell(dash, 3, r_right, pe_txt, text_color=color.white, text_size=size.small)
             r_right += 1
 
         if show_eps
             table.cell(dash, 2, r_right, "EPS (Act/Est)", text_color=color.white, text_size=size.small)
-            eps_col = actual_eps >= est_eps ? color.green : color.red
-            table.cell(dash, 3, r_right, str.tostring(actual_eps, "#.##") + " / " + str.tostring(est_eps, "#.##"), text_color=eps_col, text_size=size.small)
+            eps_txt = (na(actual_eps) and na(est_eps)) ? "N/A" : (na(actual_eps) ? "-" : str.tostring(actual_eps, "#.##")) + " / " + (na(est_eps) ? "-" : str.tostring(est_eps, "#.##"))
+            eps_col = (not na(actual_eps) and not na(est_eps)) ? (actual_eps >= est_eps ? color.green : color.red) : color.white
+            table.cell(dash, 3, r_right, eps_txt, text_color=eps_col, text_size=size.small)
             r_right += 1
 
         if show_dma
@@ -183,8 +185,9 @@ if barstate.islast
             r_right += 1
 
         if show_rvol
+            rvol_txt = na(rvol) ? "N/A" : str.tostring(rvol, "#.##") + "x"
             table.cell(dash, 2, r_right, "RVOL (20D)", text_color=color.white, text_size=size.small)
-            table.cell(dash, 3, r_right, str.tostring(rvol, "#.##") + "x", text_color=rvol >= 1.5 ? color.teal : color.white, text_size=size.small)
+            table.cell(dash, 3, r_right, rvol_txt, text_color=not na(rvol) and rvol >= 1.5 ? color.teal : color.white, text_size=size.small)
             r_right += 1
 
         if show_rsi

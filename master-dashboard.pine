@@ -1,0 +1,199 @@
+//@version=6
+indicator("Master Dashboard", overlay=true)
+
+// ==========================================
+// 1. Inputs & Toggles
+// ==========================================
+grp_layout = "Layout Settings"
+show_right = input.bool(true, "Show Tech & Fund Columns", group=grp_layout, tooltip="Disabling this completely hides the right half of the dashboard to save space.")
+
+grp_day   = "Price Action Stats"
+show_day  = input.bool(true, "Today's Return", group=grp_day)
+show_max  = input.bool(true, "Max Up / Max Down", group=grp_day)
+show_vwap = input.bool(true, "VWAP", group=grp_day)
+
+grp_perf  = "Performance Metrics"
+show_yest = input.bool(true, "Yesterday Return", group=grp_perf)
+show_1w   = input.bool(true, "1 Week Return", group=grp_perf)
+show_1m   = input.bool(true, "1 Month Return", group=grp_perf)
+show_3m   = input.bool(true, "3 Month Return", group=grp_perf)
+show_6m   = input.bool(true, "6 Month Return", group=grp_perf)
+show_1y   = input.bool(true, "1 Year Return", group=grp_perf)
+
+grp_fund  = "Fundamentals"
+show_pe   = input.bool(true, "P/E Ratio", group=grp_fund)
+show_mcap = input.bool(true, "Market Cap (Crores)", group=grp_fund)
+show_eps  = input.bool(true, "EPS (Act / Est)", group=grp_fund)
+
+grp_tech  = "Technicals"
+show_dma  = input.bool(true, "50 & 100 DMA", group=grp_tech)
+show_52wh = input.bool(true, "52W High Diff", group=grp_tech)
+show_rvol = input.bool(true, "RVOL (20D)", group=grp_tech)
+show_rsi  = input.bool(true, "RSI (14D)", group=grp_tech)
+show_atr  = input.bool(true, "Daily ATR (14D)", group=grp_tech)
+
+// ==========================================
+// 2. Calculations
+// ==========================================
+// Day Move Stats & Yesterday
+d_open  = request.security(syminfo.tickerid, "D", open)
+d_high  = request.security(syminfo.tickerid, "D", high)
+d_low   = request.security(syminfo.tickerid, "D", low)
+c_prev  = request.security(syminfo.tickerid, "D", close[1])
+c_2d    = request.security(syminfo.tickerid, "D", close[2])
+c_today = request.security(syminfo.tickerid, "D", close)
+
+today_ret     = ((c_today - c_prev) / c_prev) * 100
+ret_yesterday = ((c_prev - c_2d) / c_2d) * 100
+max_up        = ((d_high - c_prev) / c_prev) * 100
+max_down      = ((d_low - c_prev) / c_prev) * 100
+
+vwap_val = ta.vwap
+vwap_str = close > vwap_val ? "Above VWAP" : "Below VWAP"
+vwap_col = close > vwap_val ? color.green : color.red
+
+// Performance
+c_1w = request.security(syminfo.tickerid, "D", close[5])
+c_1m = request.security(syminfo.tickerid, "D", close[21])
+c_3m = request.security(syminfo.tickerid, "D", close[63])
+c_6m = request.security(syminfo.tickerid, "D", close[126])
+c_1y = request.security(syminfo.tickerid, "D", close[252])
+
+ret_1w = ((c_today - c_1w) / c_1w) * 100
+ret_1m = ((c_today - c_1m) / c_1m) * 100
+ret_3m = ((c_today - c_3m) / c_3m) * 100
+ret_6m = ((c_today - c_6m) / c_6m) * 100
+ret_1y = ((c_today - c_1y) / c_1y) * 100
+
+// Fundamentals
+eps_ttm       = request.financial(syminfo.tickerid, "EARNINGS_PER_SHARE", "TTM")
+pe_ratio      = c_today / eps_ttm
+shares_out    = request.financial(syminfo.tickerid, "TOTAL_SHARES_OUTSTANDING", "FQ")
+market_cap_cr = (shares_out * c_today) / 10000000 
+actual_eps    = request.earnings(syminfo.tickerid, earnings.actual)
+est_eps       = request.earnings(syminfo.tickerid, earnings.estimate)
+
+// Technicals (Updated to Simple Moving Averages for "DMA")
+dma50      = request.security(syminfo.tickerid, "D", ta.sma(close, 50))
+dma100     = request.security(syminfo.tickerid, "D", ta.sma(close, 100))
+dma50_str  = c_today > dma50 ? "Above" : "Below"
+dma100_str = c_today > dma100 ? "Above" : "Below"
+
+high_52w  = request.security(syminfo.tickerid, "D", ta.highest(high, 252))
+dist_52wh = ((c_today - high_52w) / high_52w) * 100
+rvol      = request.security(syminfo.tickerid, "D", volume) / request.security(syminfo.tickerid, "D", ta.sma(volume, 20))
+daily_rsi = request.security(syminfo.tickerid, "D", ta.rsi(close, 14))
+daily_atr = request.security(syminfo.tickerid, "D", ta.atr(14))
+
+// ==========================================
+// 3. Table Construction
+// ==========================================
+var table dash = table.new(position.top_right, show_right ? 4 : 2, 15, bgcolor=color.new(color.black, 85), border_color=color.new(color.gray, 70), border_width=1)
+
+f_color(val) => val > 0 ? color.green : val < 0 ? color.red : color.gray
+f_str(val)   => (val > 0 ? "+" : "") + str.tostring(val, "#.##") + "%"
+
+if barstate.islast
+    // Headers
+    table.cell(dash, 0, 0, "PRICE ACT", text_color=color.gray, text_size=size.small)
+    table.cell(dash, 1, 0, "VALUE",     text_color=color.gray, text_size=size.small)
+    
+    if show_right
+        table.cell(dash, 2, 0, "TECH & FUND", text_color=color.gray, text_size=size.small)
+        table.cell(dash, 3, 0, "VALUE",       text_color=color.gray, text_size=size.small)
+
+    int r_left  = 1
+    int r_right = 1
+
+    // --- LEFT COLUMN: Price Action & Performance ---
+    if show_day
+        table.cell(dash, 0, r_left, "Today", text_color=color.white, text_size=size.small)
+        table.cell(dash, 1, r_left, f_str(today_ret), text_color=f_color(today_ret), text_size=size.small)
+        r_left += 1
+
+    if show_max
+        table.cell(dash, 0, r_left, "Max Up", text_color=color.white, text_size=size.small)
+        table.cell(dash, 1, r_left, f_str(max_up), text_color=f_color(max_up), text_size=size.small)
+        r_left += 1
+        table.cell(dash, 0, r_left, "Max Down", text_color=color.white, text_size=size.small)
+        table.cell(dash, 1, r_left, f_str(max_down), text_color=f_color(max_down), text_size=size.small)
+        r_left += 1
+
+    if show_vwap
+        table.cell(dash, 0, r_left, "VWAP", text_color=color.white, text_size=size.small)
+        table.cell(dash, 1, r_left, vwap_str, text_color=vwap_col, text_size=size.small)
+        r_left += 1
+
+    // Yesterday moved directly above 1 Week
+    if show_yest
+        table.cell(dash, 0, r_left, "Yesterday", text_color=color.white, text_size=size.small)
+        table.cell(dash, 1, r_left, f_str(ret_yesterday), text_color=f_color(ret_yesterday), text_size=size.small)
+        r_left += 1
+
+    if show_1w
+        table.cell(dash, 0, r_left, "1 Week", text_color=color.white, text_size=size.small)
+        table.cell(dash, 1, r_left, f_str(ret_1w), text_color=f_color(ret_1w), text_size=size.small)
+        r_left += 1
+    if show_1m
+        table.cell(dash, 0, r_left, "1 Month", text_color=color.white, text_size=size.small)
+        table.cell(dash, 1, r_left, f_str(ret_1m), text_color=f_color(ret_1m), text_size=size.small)
+        r_left += 1
+    if show_3m
+        table.cell(dash, 0, r_left, "3 Months", text_color=color.white, text_size=size.small)
+        table.cell(dash, 1, r_left, f_str(ret_3m), text_color=f_color(ret_3m), text_size=size.small)
+        r_left += 1
+    if show_6m
+        table.cell(dash, 0, r_left, "6 Months", text_color=color.white, text_size=size.small)
+        table.cell(dash, 1, r_left, f_str(ret_6m), text_color=f_color(ret_6m), text_size=size.small)
+        r_left += 1
+    if show_1y
+        table.cell(dash, 0, r_left, "1 Year", text_color=color.white, text_size=size.small)
+        table.cell(dash, 1, r_left, f_str(ret_1y), text_color=f_color(ret_1y), text_size=size.small)
+        r_left += 1
+
+    // --- RIGHT COLUMN: Fundamentals & Technicals (Conditional) ---
+    if show_right
+        if show_mcap
+            table.cell(dash, 2, r_right, "Mkt Cap (Cr)", text_color=color.white, text_size=size.small)
+            table.cell(dash, 3, r_right, str.tostring(market_cap_cr, "#.##"), text_color=color.white, text_size=size.small)
+            r_right += 1
+
+        if show_pe
+            table.cell(dash, 2, r_right, "P/E Ratio", text_color=color.white, text_size=size.small)
+            table.cell(dash, 3, r_right, str.tostring(pe_ratio, "#.##"), text_color=color.white, text_size=size.small)
+            r_right += 1
+
+        if show_eps
+            table.cell(dash, 2, r_right, "EPS (Act/Est)", text_color=color.white, text_size=size.small)
+            eps_col = actual_eps >= est_eps ? color.green : color.red
+            table.cell(dash, 3, r_right, str.tostring(actual_eps, "#.##") + " / " + str.tostring(est_eps, "#.##"), text_color=eps_col, text_size=size.small)
+            r_right += 1
+
+        if show_dma
+            table.cell(dash, 2, r_right, "50 DMA", text_color=color.white, text_size=size.small)
+            table.cell(dash, 3, r_right, dma50_str, text_color=c_today > dma50 ? color.green : color.red, text_size=size.small)
+            r_right += 1
+            table.cell(dash, 2, r_right, "100 DMA", text_color=color.white, text_size=size.small)
+            table.cell(dash, 3, r_right, dma100_str, text_color=c_today > dma100 ? color.green : color.red, text_size=size.small)
+            r_right += 1
+
+        if show_52wh
+            table.cell(dash, 2, r_right, "52W High Diff", text_color=color.white, text_size=size.small)
+            table.cell(dash, 3, r_right, str.tostring(dist_52wh, "#.##") + "%", text_color=dist_52wh >= 0 ? color.green : color.red, text_size=size.small)
+            r_right += 1
+
+        if show_rvol
+            table.cell(dash, 2, r_right, "RVOL (20D)", text_color=color.white, text_size=size.small)
+            table.cell(dash, 3, r_right, str.tostring(rvol, "#.##") + "x", text_color=rvol >= 1.5 ? color.teal : color.white, text_size=size.small)
+            r_right += 1
+
+        if show_rsi
+            table.cell(dash, 2, r_right, "RSI (14D)", text_color=color.white, text_size=size.small)
+            rsi_col = daily_rsi >= 70 ? color.red : daily_rsi <= 30 ? color.green : color.white
+            table.cell(dash, 3, r_right, str.tostring(daily_rsi, "#.#"), text_color=rsi_col, text_size=size.small)
+            r_right += 1
+
+        if show_atr
+            table.cell(dash, 2, r_right, "ATR (14D)", text_color=color.white, text_size=size.small)
+            table.cell(dash, 3, r_right, str.tostring(daily_atr, "#.##"), text_color=color.white, text_size=size.small)
+            r_right += 1

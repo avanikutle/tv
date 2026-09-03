@@ -6,18 +6,30 @@ grpToggles = "Level Toggles"
 showPrevDaily = input.bool(true, title="Show Previous Day (High/Low/Close)", group=grpToggles)
 showPrev5Min  = input.bool(true, title="Show Previous 5-Min (High/Low)", group=grpToggles)
 showToday5Min = input.bool(true, title="Show Today's 5-Min (High/Low)", group=grpToggles)
-showRoundNums = input.bool(true, title="Show Round Numbers", group=grpToggles)
+showRoundNums = input.bool(false, title="Show Round Numbers", group=grpToggles)
 
 grpRound = "Round Number Settings"
-roundStep = input.int(500, title="Round Number Step", tooltip="Set to 500 for Nifty, 100 for others.", group=grpRound)
 colorRound = input.color(color.new(color.fuchsia, 30), title="Round Number Color", group=grpRound)
 
-// --- Detect New Trading Day & Session Break ---
-bool isNewDay = time("D") != time("D")[1]
-colorSessionBreak = color.new(color.gray, 60)
+// --- Dynamic Step Size Logic ---
+get_dynamic_step(float p) =>
+    if p < 50
+        5
+    else if p < 200
+        10
+    else if p < 1000
+        50
+    else if p < 5000
+        100
+    else if p < 15000
+        250
+    else
+        500
 
-if isNewDay
-    line.new(x1=bar_index, y1=low, x2=bar_index, y2=high, color=colorSessionBreak, style=line.style_dashed, extend=extend.both)
+roundStep = get_dynamic_step(close)
+
+// --- Detect New Trading Day (Timeframe safe) ---
+bool isNewDay = ta.change(time("D")) != 0
 
 // --- 5-Minute First Bar Levels ---
 var float curr5h = na
@@ -34,17 +46,18 @@ else if time - ta.valuewhen(isNewDay, time, 0) < 5 * 60 * 1000
     curr5h := math.max(nz(curr5h, high), high)
     curr5l := math.min(nz(curr5l, low), low)
 
-// --- Daily High, Low, Close ---
-pdh = request.security(syminfo.tickerid, "D", high[1], lookahead=barmerge.lookahead_on)
-pdl = request.security(syminfo.tickerid, "D", low[1], lookahead=barmerge.lookahead_on)
-pdc = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_on)
+// --- Daily High, Low, Close (Safe across views) ---
+isIntraday = timeframe.isintraday
+pdh = request.security(syminfo.tickerid, "D", high[1], ignore_invalid_symbol=true)
+pdl = request.security(syminfo.tickerid, "D", low[1], ignore_invalid_symbol=true)
+pdc = request.security(syminfo.tickerid, "D", close[1], ignore_invalid_symbol=true)
 
 // --- Map Aggregation Logic for Decluttering ---
 method add_level(map<float, string> mNames, map<float, color> mColors, float price, string name, color col) =>
     if not na(price)
         if mNames.contains(price)
             mNames.put(price, mNames.get(price) + " / " + name)
-            mColors.put(price, color.white) // Clustered lines turn white
+            mColors.put(price, color.white)
         else
             mNames.put(price, name)
             mColors.put(price, col)
@@ -57,21 +70,19 @@ if barstate.islast
     colorPrev = color.new(color.silver, 0)
     colorToday = color.new(color.white, 0)
 
-    // Conditionally Load Levels based on User Toggles
-    if showPrevDaily
+    if showPrevDaily and not na(pdh)
         mapNames.add_level(mapColors, pdh, "prev day high", colorPrev)
         mapNames.add_level(mapColors, pdl, "prev-day-low", colorPrev)
         mapNames.add_level(mapColors, pdc, "prev-close", colorPrev)
         
-    if showPrev5Min
+    if showPrev5Min and isIntraday
         mapNames.add_level(mapColors, prev5h, "prev 5 min high", colorPrev)
         mapNames.add_level(mapColors, prev5l, "prev-5min-low", colorPrev)
         
-    if showToday5Min
+    if showToday5Min and isIntraday
         mapNames.add_level(mapColors, curr5h, "today 5 min high", colorToday)
         mapNames.add_level(mapColors, curr5l, "today 5 min low", colorToday)
 
-    // Conditionally Load Nearest Round Numbers (2 above, 2 below current price)
     if showRoundNums and roundStep > 0
         baseRound = math.floor(close / roundStep) * roundStep
         for i = -1 to 2
@@ -79,11 +90,14 @@ if barstate.islast
             rnLabel = str.tostring(rnPrice)
             mapNames.add_level(mapColors, rnPrice, rnLabel, colorRound)
 
-    // Render the final decluttered lines
+    // Protected X-coordinates to prevent negative indexing
+    int safeXStart = math.max(0, bar_index - 1)
+    int safeLabelX = math.max(0, bar_index - math.min(30, bar_index))
+
     arrPrices = mapNames.keys()
     for p in arrPrices
         n = mapNames.get(p)
         c = mapColors.get(p)
         
-        line.new(bar_index - 1, p, bar_index, p, color=c, style=line.style_dotted, extend=extend.both)
-        label.new(bar_index - 30, p, text=n, style=label.style_none, textcolor=c, size=size.small)
+        line.new(safeXStart, p, bar_index, p, color=c, style=line.style_dotted, extend=extend.both)
+        label.new(safeLabelX, p, text=n, style=label.style_none, textcolor=c, size=size.small)

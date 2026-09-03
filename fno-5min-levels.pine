@@ -52,6 +52,9 @@ pdh = request.security(syminfo.tickerid, "D", high[1], ignore_invalid_symbol=tru
 pdl = request.security(syminfo.tickerid, "D", low[1], ignore_invalid_symbol=true)
 pdc = request.security(syminfo.tickerid, "D", close[1], ignore_invalid_symbol=true)
 
+// Calculate ATR globally to avoid scope warnings inside the islast block
+atr = ta.atr(14)
+
 // --- Map Aggregation Logic for Decluttering ---
 method add_level(map<float, string> mNames, map<float, color> mColors, float price, string name, color col) =>
     if not na(price)
@@ -92,12 +95,30 @@ if barstate.islast
 
     // Protected X-coordinates to prevent negative indexing
     int safeXStart = math.max(0, bar_index - 1)
-    int safeLabelX = math.max(0, bar_index - math.min(30, bar_index))
-
+    
     arrPrices = mapNames.keys()
-    for p in arrPrices
+    arrPrices.sort() // Sort prices lowest to highest for distance checking
+    
+    // Dynamic collision threshold based on current volatility
+    float threshold = nz(atr, close * 0.002) * 0.25 
+    
+    int currentOffset = 30
+    for i = 0 to arrPrices.size() - 1
+        p = arrPrices.get(i)
         n = mapNames.get(p)
         c = mapColors.get(p)
+        
+        // Push labels iteratively further left if they share similar price territory
+        if i > 0
+            prevP = arrPrices.get(i - 1)
+            if math.abs(p - prevP) < threshold
+                currentOffset += 40
+            else
+                currentOffset := 30
+        else
+            currentOffset := 30
+            
+        int safeLabelX = math.max(0, bar_index - math.min(currentOffset, bar_index))
         
         line.new(safeXStart, p, bar_index, p, color=c, style=line.style_dotted, extend=extend.both)
         label.new(safeLabelX, p, text=n, style=label.style_none, textcolor=c, size=size.small)
